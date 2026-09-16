@@ -1,0 +1,45 @@
+services:
+  registry:
+    build: { context: ., dockerfile: registry-service/Dockerfile }
+    environment:
+      PORT: "8001"
+      DB_PATH: /data/registry.db
+    volumes:
+      - registry-data:/data
+    ports:
+      - "8001:8001"
+
+  budget:
+    build: { context: ., dockerfile: budget-service/Dockerfile }
+    environment:
+      PORT: "8002"
+      DB_PATH: /data/budget.db
+      REGISTRY_URL: http://registry:8001
+    volumes:
+      - budget-data:/data
+    ports:
+      - "8002:8002"
+    depends_on:
+      - registry
+
+  authz:
+    build: { context: ., dockerfile: authz-service/Dockerfile }
+    environment:
+      PORT: "8003"
+      DB_PATH: /data/authz.db
+      REGISTRY_URL: http://registry:8001
+      BUDGET_URL: http://budget:8002
+      AUTHZ_SECRET: ${AUTHZ_SECRET:-dev-secret-change-me}
+      RESERVATION_TTL_SECONDS: "300"
+    volumes:
+      - authz-data:/data
+    ports:
+      - "8003:8003"
+    depends_on:
+      - registry
+      - budget
+
+volumes:
+  registry-data:
+  budget-data:
+  authz-data:
