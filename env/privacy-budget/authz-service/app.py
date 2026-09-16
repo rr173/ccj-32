@@ -199,6 +199,10 @@ def create_application(body, params, query):
         raise ApiError(400, "invalid_epsilon",
                        f"epsilon must be in (0, "
                        f"{ds['max_epsilon_per_request']}]")
+    # Sensitivity (Laplace delta-f) comes from the dataset's registered
+    # policy, never from the caller: a forged or missing value must not
+    # weaken the noise scale or alter the signed noise parameters.
+    sensitivity = float(ds["query_sensitivity"])
 
     app_id = "app-" + uuid.uuid4().hex[:12]
     t = now()
@@ -210,7 +214,7 @@ def create_application(body, params, query):
         (app_id, idem, body.get("parent_id"), int(body.get("version", 1)),
          body["dataset_id"], body["subject_id"], epsilon,
          float(body.get("delta", 0)), body.get("mechanism", "laplace"),
-         float(body.get("sensitivity", 1.0)), json.dumps(body["query"]),
+         sensitivity, json.dumps(body["query"]),
          f"req-{app_id}", t, t))
     row = get_app(app_id)
 
@@ -357,11 +361,12 @@ def retry(body, params, query):
                        f"cannot retry from {row['status']}")
     # New application, version+1, fresh reservation. The original keeps its
     # terminal state: failed/cancelled were already refunded (once),
-    # executed consumption is retained.
+    # executed consumption is retained. Sensitivity is re-derived from the
+    # dataset's current policy inside create_application.
     st, resp = create_application({
         "dataset_id": row["dataset_id"], "subject_id": row["subject_id"],
         "epsilon": row["epsilon"], "delta": row["delta"],
-        "mechanism": row["mechanism"], "sensitivity": row["sensitivity"],
+        "mechanism": row["mechanism"],
         "query": json.loads(row["query"]),
         "parent_id": row["id"], "version": row["version"] + 1,
     }, params, query)

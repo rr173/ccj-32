@@ -28,12 +28,19 @@ CREATE TABLE IF NOT EXISTS datasets(
 );
 """
 
+# Server-side policy: numeric query sensitivity (Laplace delta-f) for each
+# registered sensitivity level. This mapping is the single source of truth;
+# callers never get to choose delta-f for a query.
+SENSITIVITY_DELTA = {"low": 0.1, "medium": 1.0, "high": 10.0}
+
 db = DB(os.environ.get("DB_PATH", "/data/registry.db"), SCHEMA)
 app = App("registry")
 
 
 def row_to_dict(r):
-    return {k: r[k] for k in r.keys()}
+    d = {k: r[k] for k in r.keys()}
+    d["query_sensitivity"] = SENSITIVITY_DELTA[d["sensitivity"]]
+    return d
 
 
 @app.route("POST", "/datasets")

@@ -258,6 +258,35 @@ def main():
         ops7 = {e["op"] for e in ledger(ds7, "erin")}
         check("expire/rollover visible", {"EXPIRE", "ROLLOVER"} <= ops7,
               str(ops7))
+
+        print("== 9. sensitivity comes from dataset policy, never the caller")
+        ds9 = make_dataset("sensitivity")  # registered as "high" -> df 10.0
+        s, b = call("GET", f"{REG_URL}/datasets/{ds9}")
+        check("registry exposes policy sensitivity",
+              s == 200 and b["query_sensitivity"] == 10.0, json.dumps(b))
+        # forged tiny sensitivity must not stick
+        s, b = call("POST", AUT_URL + "/applications", {
+            "dataset_id": ds9, "subject_id": "mallory", "epsilon": 1.0,
+            "sensitivity": 0.01, "query": {}})
+        check("forged sensitivity ignored, policy value stored",
+              s == 201 and b["application"]["sensitivity"] == 10.0,
+              json.dumps(b))
+        app9 = b["application"]["id"]
+        call("POST", f"{AUT_URL}/applications/{app9}/approve")
+        s, b = call("POST", f"{AUT_URL}/applications/{app9}/execute",
+                    {"true_value": 50.0})
+        check("signed result carries policy sensitivity",
+              s == 201 and b["result"]["sensitivity"] == 10.0, json.dumps(b))
+        s, b2 = call("POST", AUT_URL + "/results/verify",
+                     {"result_id": b["result"]["result_id"]})
+        check("policy-bound result verifies", s == 200 and b2["valid"] is True)
+        # missing sensitivity must not default to anything caller-friendly
+        s, b = call("POST", AUT_URL + "/applications", {
+            "dataset_id": ds9, "subject_id": "mallory", "epsilon": 1.0,
+            "query": {}})
+        check("missing sensitivity also yields policy value",
+              s == 201 and b["application"]["sensitivity"] == 10.0,
+              json.dumps(b))
     finally:
         for p in procs:
             p.terminate()

@@ -28,7 +28,9 @@
 **预算与组合**
 - 预算按 `(dataset, subject, period)` 记账：`budget_total / consumed / reserved`。
 - 组合规则为纯 DP（pure composition）：同一主体在同一周期内多次查询的 ε 直接累加进 `consumed`，累计不得超过周期预算。
-- 每次申请消耗带**有效期**（`ttl_seconds`，且不超过周期结束时间）和**敏感度**（随数据集登记，决定拉普拉斯噪声尺度 Δf/ε）。
+- 每次申请消耗带**有效期**（`ttl_seconds`，且不超过周期结束时间）和**敏感度**（由数据集登记级别
+  low/medium/high 经服务端映射为数值 Δf，决定拉普拉斯噪声尺度 Δf/ε；调用者传入的
+  `sensitivity` 一律被忽略，伪造或缺失都不能改变扣减数值、加噪尺度与签名参数）。
 
 **并发原子预占**
 - 所有余额变更在 `BEGIN IMMEDIATE` 事务内完成（写锁先行，串行化检查-扣减），并叠加条件更新
@@ -95,10 +97,10 @@ curl -X POST localhost:8001/datasets -d '{
   "name":"census","sensitivity":"high","epsilon_per_period":10,
   "period_seconds":86400,"max_epsilon_per_request":5,"composition":"pure"}'
 
-# 2. 提交统计申请（自动原子预占预算）
+# 2. 提交统计申请（自动原子预占预算；灵敏度由数据集策略决定，无需传入）
 curl -X POST localhost:8003/applications -d '{
   "dataset_id":"ds-xxx","subject_id":"alice","epsilon":2.0,
-  "sensitivity":1.0,"query":{"sql":"SELECT count(*) FROM census"},
+  "query":{"sql":"SELECT count(*) FROM census"},
   "idempotency_key":"req-001"}'
 
 # 3. 审批 → 执行（注入拉普拉斯噪声，消耗提交，结果签名）
